@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DetectAI</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ea580c'/%3E%3Cpath d='M9 22V10h6a6 6 0 0 1 0 12z' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo" aria-hidden="true">D</span>DetectAI</div>
+    <div class="status" id="status"><span class="dot"></span><span id="status-text">Starting…</span></div>
+  </header>
+
+  <main class="layout">
+    <section class="doc-pane" aria-label="Document">
+      <div class="pane-head">
+        <h1 id="pane-title">Check a text for AI writing</h1>
+        <div class="tabs" role="tablist" id="tabs" hidden>
+          <button role="tab" data-view="sentences" aria-selected="true">Sentences</button>
+          <button role="tab" data-view="words" aria-selected="false">Words</button>
+          <button role="tab" data-view="phrases" aria-selected="false">AI phrases</button>
+        </div>
+      </div>
+
+      <textarea id="input" spellcheck="false"
+        placeholder="Paste an essay, article or any English text. Use at least 150 words for a reliable score."></textarea>
+      <div id="doc" class="doc" hidden></div>
+
+      <div class="pane-foot">
+        <span id="word-count" class="muted">0 words</span>
+        <div class="actions" data-mode="edit">
+          <button id="upload" class="btn ghost" type="button">Upload .docx / .txt</button>
+          <input id="file" type="file" accept=".docx,.txt,.md,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+          <button id="sample" class="btn ghost" type="button">Try an AI sample</button>
+          <button id="analyze" class="btn primary" type="button" disabled>Check text</button>
+        </div>
+        <div class="actions" data-mode="report" hidden>
+          <button id="edit" class="btn ghost" type="button">Edit text</button>
+          <button id="to-humanize" class="btn primary" type="button">Humanize →</button>
+        </div>
+        <div class="actions" data-mode="humanized" hidden>
+          <button id="back-report" class="btn ghost" type="button">← Report</button>
+          <button id="download" class="btn ghost" type="button">Download .txt</button>
+          <button id="recheck" class="btn ghost" type="button">Re-check</button>
+          <button id="copy" class="btn primary" type="button">Copy text</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side" aria-label="Results">
+      <div id="empty" class="card intro">
+        <h2>How it works</h2>
+        <ol>
+          <li><strong>Word by word.</strong> Two small language models read your text and record how predictable every word was.</li>
+          <li><strong>Sentence by sentence.</strong> Each sentence is scored together with its neighbours, like Turnitin's report.</li>
+          <li><strong>Patterns.</strong> Words, phrases and sentence shapes that AI models overuse are counted.</li>
+          <li><strong>Humanize.</strong> Flagged passages are rewritten, checked to keep their meaning, and re-scored until they read naturally.</li>
+        </ol>
+        <p class="muted small">Everything runs on this computer. Nothing is sent anywhere.</p>
+      </div>
+
+      <div id="loading" class="card loading" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <p id="loading-text">Reading your text word by word…</p>
+      </div>
+
+      <div id="error" class="card error" role="alert" hidden></div>
+
+      <div id="results" hidden>
+        <div class="card score">
+          <div class="ring">
+            <svg viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="ring-track" cx="60" cy="60" r="52"/>
+              <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52"/>
+            </svg>
+            <div class="ring-label"><span id="share">–</span><small id="share-caption">of text</small></div>
+          </div>
+          <div>
+            <div class="verdict" id="verdict"></div>
+            <p class="muted small" id="verdict-detail"></p>
+          </div>
+        </div>
+        <div class="card warn" id="manipulation" role="alert" hidden></div>
+
+        <div class="card humanize-card">
+          <h2>Humanize</h2>
+          <div class="field">
+            <span class="field-label">Strength</span>
+            <div class="seg" id="strength" role="radiogroup" aria-label="Strength">
+              <button role="radio" data-v="light" aria-checked="false" title="Word-level fixes only. Instant.">Light</button>
+              <button role="radio" data-v="balanced" aria-checked="true" title="Rewrite flagged passages.">Balanced</button>
+              <button role="radio" data-v="strong" aria-checked="false" title="Rewrite anything borderline, more rounds.">Strong</button>
+            </div>
+          </div>
+          <div class="field">
+            <span class="field-label">Tone</span>
+            <div class="seg" id="tone" role="radiogroup" aria-label="Tone">
+              <button role="radio" data-v="natural" aria-checked="true">Natural</button>
+              <button role="radio" data-v="academic" aria-checked="false">Academic</button>
+            </div>
+          </div>
+          <p class="muted small" id="humanize-note"></p>
+          <button id="humanize" class="btn primary wide" type="button">Humanize flagged text</button>
+        </div>
+
+        <div class="card">
+          <h2>Why</h2>
+          <ul class="signals" id="signals"></ul>
+          <div class="scale muted small"><span>← leans human</span><span>leans AI →</span></div>
+        </div>
+
+        <div class="card legend" id="legend"></div>
+
+        <p class="disclaimer small muted">
+          AI detection is a probability, not proof. Treat a high score as a reason to look closer, never as
+          a verdict on its own. Very short, formulaic, famous or heavily edited texts are the hardest to judge.
+        </p>
+      </div>
+
+      <div id="hresults" hidden>
+        <div class="card compare">
+          <div class="compare-col">
+            <small class="muted">Before</small>
+            <span id="h-before">–</span>
+            <small class="muted" id="h-before-v"></small>
+          </div>
+          <div class="compare-arrow" aria-hidden="true">→</div>
+          <div class="compare-col">
+            <small class="muted">After</small>
+            <span id="h-after">–</span>
+            <small class="muted" id="h-after-v"></small>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Changes</h2>
+          <dl class="facts" id="h-facts"></dl>
+          <p class="muted small" style="margin:10px 0 0">Click any highlighted change to switch between the
+            new and original wording. Copy and download use your choices.</p>
+        </div>
+
+        <div class="card legend">
+          <h2>Highlights</h2>
+          <div class="legend-row"><span class="swatch" style="background:rgb(var(--human) / 0.18)"></span>Rewritten passage</div>
+          <div class="legend-row"><span class="swatch" style="border-bottom:2px solid rgb(var(--human))"></span>Word or phrase fix</div>
+          <div class="legend-row"><span class="swatch" style="border-bottom:2px dashed var(--muted)"></span>Change you turned off (original kept)</div>
+        </div>
+
+        <p class="disclaimer small muted">
+          Read the result before you use it. The meaning check catches drift, but you know what you meant.
+          Re-check runs the detector on exactly the text you'll copy.
+        </p>
+      </div>
+    </aside>
+  </main>
+
+  <div id="tip" class="tip" role="tooltip" hidden></div>
+  <script src="/docx.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

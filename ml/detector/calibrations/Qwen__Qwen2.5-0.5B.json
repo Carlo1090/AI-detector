@@ -1,0 +1,85 @@
+{
+  "model_name": "Qwen/Qwen2.5-0.5B",
+  "document": {
+    "features": [
+      "curvature",
+      "mean_logprob",
+      "top10_frac",
+      "burst_ppl",
+      "burst_len",
+      "lexicon"
+    ],
+    "mean": [
+      -0.8802046381924042,
+      -2.5856092274354565,
+      0.7887037010477764,
+      0.6662378543201282,
+      0.4318882684532316,
+      1.247784020255205
+    ],
+    "scale": [
+      1.5033158028705758,
+      0.6889255552942015,
+      0.08310673267774168,
+      0.18248847404312918,
+      0.1750089012790859,
+      1.6931982829064065
+    ],
+    "coef": [
+      -0.6605368217875612,
+      2.005686786886619,
+      0.5728360521010314,
+      -0.012960276963347409,
+      -0.20679188007530333,
+      1.9765676502154863
+    ],
+    "intercept": 0.5427424648101145,
+    "threshold": 0.7677645419927452
+  },
+  "window": {
+    "features": [
+      "curvature",
+      "mean_logprob",
+      "top10_frac",
+      "lexicon"
+    ],
+    "mean": [
+      -0.2899432055675337,
+      -2.5280946056306974,
+      0.7946392264195535,
+      1.2538444002192708
+    ],
+    "scale": [
+      1.0925466315178656,
+      0.7867902244376397,
+      0.09948684187055173,
+      2.7960521490280814
+    ],
+    "coef": [
+      -0.9140975875957624,
+      2.6136322857533685,
+      -0.17885591674046553,
+      0.9416712733988554
+    ],
+    "intercept": 0.23775443370573682,
+    "threshold": 0.7905391550910151
+  },
+  "meta": {
+    "trained_on": "train-mix (1800 texts: daigt:llama-student-mimic, essay:claude, essay:gpt, essay:gpt_prompt1, essay:gpt_prompt2, essay:gpt_semantic, essay:gpt_writing, essay:human, persuade, persuade-ell, reuter:claude, reuter:gpt, reuter:gpt_prompt1, reuter:gpt_prompt2, reuter:gpt_semantic, reuter:gpt_writing, reuter:human, wp:claude, wp:gpt, wp:gpt_prompt1, wp:gpt_prompt2, wp:gpt_semantic, wp:gpt_writing, wp:human)",
+    "date": "2026-10-23",
+    "document_metrics": {
+      "n": 1800,
+      "auroc": 0.956,
+      "threshold": 0.7678,
+      "tpr_at_threshold": 0.7789,
+      "fpr_at_threshold": 0.01
+    },
+    "window_metrics": {
+      "n": 49379,
+      "auroc": 0.9135,
+      "threshold": 0.7905,
+      "tpr_at_threshold": 0.6216,
+      "fpr_at_threshold": 0.03
+    }
+  }
+}
