@@ -82,6 +82,7 @@ async def no_stale_assets(request, call_next):
 
 class DetectRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_CHARS)
+    sensitivity: Literal["strict", "balanced", "sensitive"] = "strict"
 
 
 class HumanizeRequest(DetectRequest):
@@ -119,7 +120,7 @@ def _require_detector(text: str) -> Detector:
 def detect(req: DetectRequest):
     detector = _require_detector(req.text)
     with state.lock:  # one job at a time; the GPU has room for one
-        return detector.analyze(req.text)
+        return detector.analyze(req.text, req.sensitivity)
 
 
 @app.post("/api/humanize")

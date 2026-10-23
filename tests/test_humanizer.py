@@ -38,6 +38,14 @@ def test_every_rule_edit_applies_on_its_own():
             assert single[s.start].isupper() or not single[s.start].isalpha()
 
 
+def test_plain_english_fixes():
+    text = ("In order to succeed, students commenced early due to the fact that numerous tasks were due prior to "
+            "the exam. Tutors facilitated this, and a significant number of them are able to help.")
+    assert apply_edits(text, find_edits(text, contractions=False)) == (
+        "To succeed, students started early because many tasks were due before the exam. Tutors helped this, "
+        "and many of them can help.")
+
+
 def test_academic_tone_skips_contractions():
     text = "It is clear that we do not know."
     assert apply_edits(text, find_edits(text, contractions=False)) == text

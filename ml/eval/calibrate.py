@@ -34,6 +34,10 @@ def _standardize(X: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return np.nan_to_num((X - mean) / scale, nan=0.0), mean, scale
 
 
+# Sensitivity levels as multiples of the target false-positive rate (strict = the target itself).
+SENSITIVITY = {"strict": 1, "balanced": 2.5, "sensitive": 5}
+
+
 def robust_threshold(scores: np.ndarray, sources: np.ndarray, target_fpr: float, min_n: int = 40) -> float:
     """Lowest threshold that keeps the false-positive rate at or below target for *every* kind of human
     writing with enough examples, not just on average (formal and non-native writing are flagged most).
@@ -58,6 +62,8 @@ def fit(rows: list[dict], features: tuple[str, ...], target_fpr: float, groups=N
     oof = cross_val_predict(clf, Z, y, cv=GroupKFold(5), groups=groups if groups is not None else np.arange(len(y)),
                             method="predict_proba")[:, 1]
     threshold = robust_threshold(oof[y == 0], sources[y == 0], target_fpr)
+    levels = {name: (threshold if mult == 1 else robust_threshold(oof[y == 0], sources[y == 0], target_fpr * mult))
+              for name, mult in SENSITIVITY.items()}
     clf.fit(Z, y)
 
     human_fpr = {s: round(float((oof[(y == 0) & (sources == s)] >= threshold).mean()), 4)
@@ -68,9 +74,11 @@ def fit(rows: list[dict], features: tuple[str, ...], target_fpr: float, groups=N
         "tpr_at_threshold": round(float((oof[y == 1] >= threshold).mean()), 4),
         "fpr_at_threshold": round(float((oof[y == 0] >= threshold).mean()), 4),
         "fpr_by_human_source": human_fpr,
+        "levels": {name: {"threshold": round(t, 4), "tpr": round(float((oof[y == 1] >= t).mean()), 4),
+                          "fpr": round(float((oof[y == 0] >= t).mean()), 4)} for name, t in levels.items()},
     }
     model = LinearModel(list(features), mean.tolist(), scale.tolist(), clf.coef_[0].tolist(),
-                        float(clf.intercept_[0]), threshold)
+                        float(clf.intercept_[0]), threshold, {k: round(v, 4) for k, v in levels.items()})
     return model, metrics
 
 

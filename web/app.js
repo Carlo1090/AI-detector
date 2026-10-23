@@ -1,12 +1,6 @@
 "use strict";
 
-const SAMPLE = `In today's fast-paced digital world, social media plays a pivotal role in shaping how students learn, communicate, and build relationships. Platforms like Instagram, TikTok, and X have transformed the educational landscape, offering both remarkable opportunities and significant challenges.
-
-On one hand, social media fosters collaboration and provides access to a wide range of educational resources. Students can join study groups, follow experts in their field, and engage with diverse perspectives from around the globe. Moreover, these platforms can serve as a powerful tool for creativity, allowing learners to showcase their work and receive valuable feedback.
-
-On the other hand, it is important to note that excessive use can have a profound impact on academic performance and mental well-being. Constant notifications disrupt focus, while the pressure to maintain a curated online presence can lead to anxiety and low self-esteem. Furthermore, the spread of misinformation underscores the need for strong digital literacy skills.
-
-Ultimately, the key lies in striking a balance. By setting healthy boundaries, practicing mindful consumption, and leveraging social media as a learning tool rather than a distraction, students can harness its benefits while minimizing its drawbacks. Schools and parents also play a crucial role in guiding young people as they navigate the complexities of the digital age. In conclusion, social media is not inherently good or bad — it is a tool whose impact depends on how we choose to use it.`;
+// Example texts live in samples.js (SAMPLES.ai / .human / .mixed).
 
 const VERDICTS = {
   likely_ai: "Likely AI-generated",
@@ -19,7 +13,11 @@ const VERDICTS = {
 const $ = (id) => document.getElementById(id);
 const els = {
   status: $("status"), statusText: $("status-text"), input: $("input"), doc: $("doc"), tabs: $("tabs"), htabs: $("htabs"),
-  title: $("pane-title"), words: $("word-count"), sample: $("sample"), edit: $("edit"), analyze: $("analyze"),
+  title: $("pane-title"), words: $("word-count"), edit: $("edit"), analyze: $("analyze"),
+  batch: $("batch"), files: $("files"), batchClose: $("batch-close"), batchAdd: $("batch-add"), batchCsv: $("batch-csv"),
+  toBatch: $("to-batch"), bresults: $("bresults"), batchBar: $("batch-bar"), batchStatus: $("batch-status"),
+  batchFacts: $("batch-facts"), live: $("live"), explain: $("verdict-explain"), again: $("again"),
+  sensitivity: $("sensitivity"), sensNote: $("sens-note"),
   upload: $("upload"), file: $("file"), toHumanize: $("to-humanize"), humanize: $("humanize"), print: $("print"),
   strength: $("strength"), tone: $("tone"), humanizeNote: $("humanize-note"),
   backReport: $("back-report"), download: $("download"), recheck: $("recheck"), copy: $("copy"),
@@ -51,6 +49,52 @@ const store = {  // browser storage can be unavailable (private windows, blocked
   get(key, fallback) { try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch { return fallback; } },
   set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* not critical */ } },
 };
+
+/* ---------- sensitivity ---------- */
+
+const SENS_NOTES = {
+  strict: "Fewest false alarms: tuned so about 1 in 100 human-written texts gets flagged. Misses more AI, especially from the newest models.",
+  balanced: "Catches more AI; about 2–3 in 100 human-written texts may be flagged.",
+  sensitive: "Catches the most AI, including newer models, but about 5 in 100 human-written texts may be flagged. Use it to screen, not to judge.",
+};
+state.sensitivity = store.get("detectai.sensitivity", "strict");
+
+// Re-derive flags, share and verdict for another sensitivity from the probabilities already in the report.
+// Mirrors Detector._verdict on the server.
+function rethreshold(r, text, level) {
+  const cut = r.levels?.[level];
+  if (!cut) return r;
+  let flaggedWords = 0;
+  for (const s of r.sentences) {
+    s.flagged = !r.too_short && s.probability != null && s.probability >= cut.window;
+    if (s.flagged) flaggedWords += countWords(text.slice(s.start, s.end));
+  }
+  r.sensitivity = level;
+  if (r.too_short || r.document_probability == null) return r;
+  r.ai_share = r.words ? flaggedWords / r.words : 0;
+  const docAI = r.document_probability >= cut.document;
+  r.verdict = docAI && r.ai_share >= 0.5 ? "likely_ai" : docAI || r.ai_share >= 0.2 ? "mixed" : "likely_human";
+  return r;
+}
+
+function syncSensitivity() {
+  const available = state.result?.levels || {};
+  for (const b of els.sensitivity.querySelectorAll("button")) {
+    b.setAttribute("aria-checked", String(b.dataset.v === state.sensitivity));
+    b.disabled = state.result != null && !available[b.dataset.v];
+  }
+  els.sensNote.textContent = SENS_NOTES[state.sensitivity];
+}
+
+els.sensitivity.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-v]");
+  if (!b || b.disabled) return;
+  state.sensitivity = b.dataset.v;
+  store.set("detectai.sensitivity", state.sensitivity);
+  for (const x of state.batch || []) if (x.result) rethreshold(x.result, x.text, state.sensitivity);
+  if (state.result) { rethreshold(state.result, state.text, state.sensitivity); renderReport(); }
+  live.text = null;  // the live score was computed at the old level
+});
 
 /* ---------- theme ---------- */
 
@@ -126,9 +170,15 @@ function setMode(mode) {
   show(els.htabs, mode === "humanized");
   show(els.results, mode === "report");
   show(els.hresults, mode === "humanized");
-  show(els.empty, mode === "edit" && !state.result);
+  show(els.bresults, mode === "batch");
+  show(els.toBatch, mode === "report" && state.batch != null);
+  show(els.empty, mode === "edit");
+  if (mode !== "edit") els.live.textContent = "";
   renderHistory();
-  els.title.textContent = { edit: "Check a text for AI writing", report: "Report", humanized: "Humanized text" }[mode];
+  els.title.textContent = {
+    edit: "Check a text for AI writing", report: "Report", humanized: "Humanized text",
+    batch: `Batch check · ${state.batch ? state.batch.length : 0} files`,
+  }[mode];
   hideTip();
   closePop();
 }
@@ -196,16 +246,69 @@ els.clearHistory.addEventListener("click", () => { store.set("detectai.history",
 
 const CHECK_STAGES = [[0, "Reading your text word by word…"], [4, "Scoring each sentence with its neighbours…"]];
 
+/* Live score: a quiet check after you stop typing, so the footer shows the AI score as you write and
+   "Check text" opens instantly when nothing changed since. */
+const live = { timer: null, seq: 0, text: null, result: null };
+
+function scheduleLive() {
+  clearTimeout(live.timer);
+  const text = els.input.value;
+  if (!state.ready || state.mode !== "edit" || countWords(text) < 150) { els.live.textContent = ""; return; }
+  if (live.text === text) return;
+  live.timer = setTimeout(async () => {
+    const seq = ++live.seq;
+    els.live.className = "live";
+    els.live.textContent = "· scoring…";
+    try {
+      const res = await fetch("/api/detect", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, sensitivity: state.sensitivity }) });
+      const r = await res.json();
+      if (!res.ok || seq !== live.seq || els.input.value !== text) return;
+      live.text = text;
+      live.result = r;
+      const cls = r.verdict === "likely_ai" ? "ai" : r.verdict === "mixed" ? "mid" : "hu";
+      els.live.className = `live ${cls}`;
+      els.live.textContent = `· live: ${pct(r.ai_share)} flagged as AI`;
+    } catch { if (seq === live.seq) els.live.textContent = ""; }
+  }, 1500);
+}
+
 async function analyze(text = els.input.value) {
   if (!text.trim() || !state.ready || state.busy) return;
   show(els.empty, false);
   show(els.history, false);
-  const r = await post("/api/detect", { text }, CHECK_STAGES);
+  const cached = live.text === text ? live.result : null;
+  const r = cached || await post("/api/detect", { text, sensitivity: state.sensitivity }, CHECK_STAGES);
   if (!r) { setMode(state.mode); return; }
   state.result = r;
   state.text = text;
   remember(r, text);
   renderReport();
+}
+
+// One plain-language sentence saying why, built from the signals that pushed the score the most.
+const PLAIN = {
+  probe: ["its style matches AI-written texts", "its style matches human-written texts"],
+  binoculars: ["a chat model finds it unusually unsurprising", "a chat model finds it surprising, as with human text"],
+  curvature: ["its word choices are unusually typical", "its word choices are less predictable than AI's"],
+  mean_logprob: ["the wording is very predictable", "the wording is less predictable"],
+  top10_frac: ["most words are a model's top guesses", "many words are ones a model wouldn't guess"],
+  burst_ppl: ["sentences are evenly paced", "sentence rhythm varies the way people's does"],
+  burst_len: ["sentence lengths are uniform", "sentence lengths vary"],
+};
+
+function explainVerdict(r) {
+  if (r.too_short || r.verdict === "uncalibrated") return "";
+  const leanAI = r.verdict !== "likely_human";
+  const reasons = r.signals
+    .filter((s) => (leanAI ? s.contribution > 0.4 : s.contribution < -0.4))
+    .map((s) => (s.key === "lexicon"
+      ? (leanAI && r.patterns.length ? `it uses ${r.patterns.length} AI-typical words and phrases` : null)
+      : PLAIN[s.key]?.[leanAI ? 0 : 1]))
+    .filter(Boolean).slice(0, 3);
+  if (!reasons.length) return "";
+  const list = reasons.length > 1 ? `${reasons.slice(0, -1).join(", ")} and ${reasons.at(-1)}` : reasons[0];
+  const lead = { likely_ai: "Reads like AI", mixed: "Parts read like AI", likely_human: "Reads like a person wrote it" }[r.verdict];
+  return `${lead}: ${list}.`;
 }
 
 function sentenceClass(s) {
@@ -223,6 +326,9 @@ function renderReport() {
 
   els.verdict.textContent = VERDICTS[r.verdict] || r.verdict;
   els.verdict.dataset.v = r.verdict;
+  syncSensitivity();
+  els.explain.textContent = explainVerdict(r);
+  show(els.explain, els.explain.textContent !== "");
   const flagged = r.sentences.filter((s) => s.flagged).length;
   els.verdictDetail.textContent = r.too_short
     ? `Add more text. At least ${r.min_words} words are needed for a reliable score; this has ${r.words}. The word view still works.`
@@ -265,6 +371,14 @@ function renderReport() {
   setMode("report");
   setView(state.view);
 }
+
+// Hovering the sentence map outlines that sentence in the document.
+function setHot(i) {
+  for (const m of els.doc.querySelectorAll("mark.hot")) m.classList.remove("hot");
+  if (i != null && state.view === "sentences") els.doc.querySelector(`mark[data-k="s"][data-i="${i}"]`)?.classList.add("hot");
+}
+els.strip.addEventListener("mouseover", (e) => setHot(e.target.closest("button[data-i]")?.dataset.i ?? null));
+els.strip.addEventListener("mouseleave", () => setHot(null));
 
 els.strip.addEventListener("click", (e) => {
   const b = e.target.closest("button[data-i]");
@@ -401,16 +515,22 @@ async function suggest() {
       <div class="option-foot">
         <span class="badge ${o.ai < 0.5 ? "good" : "bad"}" title="AI likelihood of this version">AI ${pct(o.ai)}${better ? "" : " (no better)"}</span>
         <span class="badge" title="How closely the meaning matches the original">${o.kind === "rule" ? "Word fixes" : `Meaning ${pct(o.similarity)}`}</span>
+        <button class="btn ghost small" type="button" data-copy="${k}">Copy</button>
         <button class="btn primary small" type="button" data-use="${k}">Use</button>
       </div></div>`;
   }).join("");
   els.popOptions.dataset.options = JSON.stringify(data.options.map((o) => o.text));
 }
 
-els.popOptions.addEventListener("click", (e) => {
+els.popOptions.addEventListener("click", async (e) => {
+  const options = JSON.parse(els.popOptions.dataset.options || "[]");
+  const copy = e.target.closest("button[data-copy]");
+  if (copy) {
+    try { await navigator.clipboard.writeText(options[Number(copy.dataset.copy)]); copy.textContent = "Copied ✓"; } catch { copy.textContent = "Can't copy"; }
+    return;
+  }
   const b = e.target.closest("button[data-use]");
   if (!b || state.pop == null) return;
-  const options = JSON.parse(els.popOptions.dataset.options || "[]");
   const s = state.result.sentences[state.pop];
   const text = state.text.slice(0, s.start) + options[Number(b.dataset.use)] + state.text.slice(s.end);
   closePop();
@@ -423,6 +543,126 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closePop
 document.addEventListener("mousedown", (e) => {
   if (!els.pop.hidden && !els.pop.contains(e.target) && !e.target.closest('mark[data-k="s"]')) closePop();
 });
+
+/* ---------- batch check: a whole class set of essays ---------- */
+
+function startBatch(fileList) {
+  const files = [...fileList];
+  if (!files.length || !state.ready) return;
+  state.batch = state.batch || [];
+  for (const f of files) state.batch.push({ name: f.name, file: f, text: null, result: null, error: null, status: "queued" });
+  setMode("batch");
+  renderBatch();
+  if (!state.batchRunning) runBatch();
+}
+
+async function runBatch() {
+  state.batchRunning = true;
+  const items = state.batch;
+  for (const item of items) {
+    if (item.status !== "queued") continue;
+    item.status = "checking";
+    renderBatch();
+    try {
+      item.text = (await readTextFile(item.file)).slice(0, 30000);
+      if (!item.text.trim()) throw new Error("No text found in this file.");
+      const res = await fetch("/api/detect", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: item.text, sensitivity: state.sensitivity }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : "The server rejected this file.");
+      item.result = data;
+      item.status = "done";
+    } catch (err) {
+      item.error = err.message || String(err);
+      item.status = "error";
+    }
+    item.file = null;
+    renderBatch();
+  }
+  state.batchRunning = false;
+  if (state.batch && state.batch.some((x) => x.status === "queued")) runBatch();  // files added meanwhile
+}
+
+function renderBatch() {
+  const items = state.batch;
+  if (!items) return;
+  const done = items.filter((x) => x.status === "done");
+  const finished = items.filter((x) => x.status === "done" || x.status === "error").length;
+  const checking = items.findIndex((x) => x.status === "checking");
+  els.batchBar.style.width = `${(100 * finished) / items.length}%`;
+  els.batchStatus.textContent = finished === items.length ? `All ${items.length} files checked.`
+    : `Checking file ${checking + 1} of ${items.length}…`;
+  const count = (v) => done.filter((x) => x.result.verdict === v).length;
+  const shares = done.map((x) => x.result.ai_share).filter((x) => x != null);
+  const facts = [
+    ["Likely AI-generated", count("likely_ai")], ["Mixed", count("mixed")], ["Likely human", count("likely_human")],
+    ["Too short to judge", count("too_short")], ["Couldn't read", items.filter((x) => x.status === "error").length],
+    ["Average share flagged", shares.length ? pct(shares.reduce((a, b) => a + b, 0) / shares.length) : "–"],
+  ];
+  els.batchFacts.innerHTML = facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(String(v))}</dd>`).join("");
+  if (state.mode !== "batch") return;
+  els.title.textContent = `Batch check · ${items.length} file${items.length === 1 ? "" : "s"}`;
+  const rows = items.map((x, i) => {
+    if (x.status !== "done") {
+      const note = x.status === "error" ? esc(x.error) : x.status === "checking" ? "Checking…" : "Waiting…";
+      return `<tr class="pending"><td class="fname">${esc(x.name)}<br><small class="muted">${note}</small></td><td></td><td></td><td></td></tr>`;
+    }
+    const r = x.result;
+    const share = r.ai_share;
+    return `<tr data-i="${i}" tabindex="0"><td class="fname">${esc(x.name)}</td><td class="num">${r.words.toLocaleString()}</td>
+      <td class="num"><span class="share-bar"><i style="width:${Math.round((share ?? 0) * 100)}%"></i></span>${pct(share)}</td>
+      <td><span class="v-pill ${r.verdict}">${esc(VERDICTS[r.verdict] || r.verdict)}</span></td></tr>`;
+  }).join("");
+  els.doc.innerHTML = `<table class="batch-table"><thead><tr><th>File</th><th class="num">Words</th>
+    <th class="num">Flagged as AI</th><th>Verdict</th></tr></thead><tbody>${rows}</tbody></table>`;
+  els.words.textContent = `${finished} of ${items.length} checked`;
+}
+
+function openBatchItem(i) {
+  const item = state.batch?.[i];
+  if (!item || item.status !== "done") return;
+  state.text = item.text;
+  state.result = item.result;
+  els.input.value = item.text;
+  renderReport();
+}
+
+function csvCell(v) {
+  const s = v == null ? "" : String(v);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportBatchCsv() {
+  const head = ["file", "words", "share_flagged_percent", "document_ai_probability_percent", "verdict",
+    "flagged_sentences", "sentences", "hidden_characters", "error"];
+  const lines = [head.join(",")];
+  for (const x of state.batch || []) {
+    const r = x.result;
+    const m = r?.manipulation || {};
+    lines.push([x.name, r?.words, r?.ai_share == null ? "" : Math.round(r.ai_share * 100),
+      r?.document_probability == null ? "" : Math.round(r.document_probability * 100), r ? VERDICTS[r.verdict] : "",
+      r ? r.sentences.filter((s) => s.flagged).length : "", r?.sentences.length,
+      r ? (m.homoglyphs || 0) + (m.invisible || 0) : "", x.error].map(csvCell).join(","));
+  }
+  download(`detectai-batch-${new Date().toISOString().slice(0, 10)}.csv`, lines.join("\n"));
+}
+
+els.doc.addEventListener("click", (e) => {
+  if (state.mode !== "batch") return;
+  const row = e.target.closest("tr[data-i]");
+  if (row) openBatchItem(Number(row.dataset.i));
+});
+els.doc.addEventListener("keydown", (e) => {
+  if (state.mode === "batch" && e.key === "Enter" && e.target.matches("tr[data-i]")) openBatchItem(Number(e.target.dataset.i));
+});
+els.batch.addEventListener("click", () => els.files.click());
+els.batchAdd.addEventListener("click", () => els.files.click());
+els.files.addEventListener("change", () => { startBatch(els.files.files); els.files.value = ""; });
+els.batchCsv.addEventListener("click", exportBatchCsv);
+els.batchClose.addEventListener("click", () => { state.batch = null; setMode("edit"); syncButtons(); });
+els.toBatch.addEventListener("click", () => { setMode("batch"); renderBatch(); });
 
 /* ---------- humanizer ---------- */
 
@@ -585,40 +825,59 @@ document.addEventListener("scroll", () => { hideTip(); closePop(); }, true);
 
 /* ---------- accuracy panel ---------- */
 
+let accuracyData = null;
+
 async function openAccuracy() {
   els.accuracy.showModal();
   try {
-    const a = await (await fetch("/accuracy.json")).json();
-    const comp = new Map((a.comparison?.suites || []).map((s) => [s.name, s]));
-    const flagCls = (x) => (x <= 0.01 ? "acc-good" : x >= 0.1 ? "acc-bad" : "");
-    const rows = a.suites.map((s) => {
-      const c = comp.get(s.name);
-      return `<tr><td>${esc(s.name)}<small>${esc(s.detail || "")} · ${s.n_human} human, ${s.n_ai} AI texts</small></td>
-        <td class="${flagCls(s.human_flagged)}">${pct(s.human_flagged)}</td><td>${pct(s.ai_caught)}</td>
-        ${a.comparison ? `<td class="${c ? flagCls(c.human_flagged) : ""}">${c ? pct(c.human_flagged) : "–"}</td><td>${c ? pct(c.ai_caught) : "–"}</td>` : ""}</tr>`;
-    }).join("");
-    els.accuracyBody.innerHTML = `
-      <p>Every number below comes from texts the detector never saw while it was being trained, last measured on
-        ${esc(a.date)}. Like Turnitin, DetectAI is tuned to <b>avoid accusing people</b>: it would rather miss some AI
-        text than flag a human.</p>
-      <table class="acc-table">
-        <thead><tr><th>Test set</th><th>Humans wrongly flagged</th><th>AI caught</th>
-          ${a.comparison ? `<th>Public detector:<br>humans wrongly flagged</th><th>Public detector:<br>AI caught</th>` : ""}</tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      ${a.comparison ? `<p class="muted small">Public detector: ${esc(a.comparison.model)}, a RoBERTa model trained on the RAID benchmark,
-        run on the same texts at its default cut-off. High detection rates mean little if real students are flagged too.</p>` : ""}
-      <h3>What to keep in mind</h3>
-      <ul>
-        <li>Writing from the newest AI models (2026) is the hardest to catch; expect many of those texts to pass.</li>
-        <li>Short texts (under 150 words) get no verdict. Lists, formulas, famous passages and heavily edited text are unreliable.</li>
-        <li>A score is a reason to look closer, never proof. Ask for drafts or notes before drawing conclusions.</li>
-      </ul>
-      <p class="muted small">Detector setup: ${esc(a.model)}. Full reports: <code>data/reports/</code> in the project.</p>`;
+    accuracyData = accuracyData || await (await fetch("/accuracy.json", { cache: "no-store" })).json();
+    renderAccuracy(state.sensitivity);
   } catch {
     els.accuracyBody.innerHTML = `<p class="muted">No evaluation results yet. Run <code>python -m ml.eval.evaluate --compare</code>.</p>`;
   }
 }
+
+function renderAccuracy(level) {
+  const a = accuracyData;
+  const levels = a.suites[0]?.levels ? Object.keys(a.suites[0].levels) : ["strict"];
+  if (!levels.includes(level)) level = "strict";
+  const comp = new Map((a.comparison?.suites || []).map((s) => [s.name, s]));
+  const flagCls = (x) => (x <= 0.01 ? "acc-good" : x >= 0.1 ? "acc-bad" : "");
+  const rows = a.suites.map((s) => {
+    const ours = s.levels?.[level] || s;
+    const c = comp.get(s.name);
+    return `<tr><td>${esc(s.name)}<small>${esc(s.detail || "")} · ${s.n_human} human, ${s.n_ai} AI texts</small></td>
+      <td class="${flagCls(ours.human_flagged)}">${pct(ours.human_flagged)}</td><td>${pct(ours.ai_caught)}</td>
+      ${a.comparison ? `<td class="${c ? flagCls(c.human_flagged) : ""}">${c ? pct(c.human_flagged) : "–"}</td><td>${c ? pct(c.ai_caught) : "–"}</td>` : ""}</tr>`;
+  }).join("");
+  const picker = levels.length > 1 ? `<div class="field"><span class="field-label">Numbers for sensitivity</span>
+      <div class="seg" id="acc-level" role="radiogroup" aria-label="Sensitivity">${levels.map((l) =>
+        `<button role="radio" data-v="${l}" aria-checked="${l === level}">${l[0].toUpperCase()}${l.slice(1)}</button>`).join("")}</div></div>` : "";
+  els.accuracyBody.innerHTML = `
+    <p>Every number below comes from texts the detector never saw while it was being trained, last measured on
+      ${esc(a.date)}. Like Turnitin, DetectAI is tuned to <b>avoid accusing people</b>: by default it would rather miss
+      some AI text than flag a human.</p>
+    ${picker}
+    <table class="acc-table">
+      <thead><tr><th>Test set</th><th>Humans wrongly flagged</th><th>AI caught</th>
+        ${a.comparison ? `<th>Public detector:<br>humans wrongly flagged</th><th>Public detector:<br>AI caught</th>` : ""}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${a.comparison ? `<p class="muted small">Public detector: ${esc(a.comparison.model)}, a RoBERTa model trained on the RAID benchmark,
+      run on the same texts at its default cut-off. High detection rates mean little if real students are flagged too.</p>` : ""}
+    <h3>What to keep in mind</h3>
+    <ul>
+      <li>Writing from the newest AI models (2026) is the hardest to catch; at the Strict setting expect many of those texts to pass.</li>
+      <li>Short texts (under 150 words) get no verdict. Lists, formulas, famous passages and heavily edited text are unreliable.</li>
+      <li>A score is a reason to look closer, never proof. Ask for drafts or notes before drawing conclusions.</li>
+    </ul>
+    <p class="muted small">Detector setup: ${esc(a.model)}. Full reports: <code>data/reports/</code> in the project.</p>`;
+}
+
+els.accuracyBody.addEventListener("click", (e) => {
+  const b = e.target.closest("#acc-level button[data-v]");
+  if (b && accuracyData) renderAccuracy(b.dataset.v);
+});
 $("open-accuracy").addEventListener("click", openAccuracy);
 $("close-accuracy").addEventListener("click", () => els.accuracy.close());
 els.accuracy.addEventListener("click", (e) => { if (e.target === els.accuracy) els.accuracy.close(); });
@@ -656,7 +915,7 @@ for (const group of [els.strength, els.tone]) {
   });
 }
 
-els.input.addEventListener("input", syncButtons);
+els.input.addEventListener("input", () => { syncButtons(); scheduleLive(); });
 els.input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) analyze();
 });
@@ -679,15 +938,28 @@ els.copy.addEventListener("click", async () => {
   setTimeout(() => { els.copy.textContent = "Copy text"; }, 1800);
 });
 els.download.addEventListener("click", () => download("humanized.txt", composed()));
+els.again.addEventListener("click", () => {  // second pass over the current result, with your choices applied
+  const t = composed();
+  state.text = t;
+  els.input.value = t;
+  humanize();
+});
 els.recheck.addEventListener("click", () => { const t = composed(); els.input.value = t; analyze(t); });
-els.sample.addEventListener("click", () => { els.input.value = SAMPLE; syncButtons(); els.input.focus(); });
+document.querySelector(".samples").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-sample]");
+  if (!b) return;
+  els.input.value = SAMPLES[b.dataset.sample];
+  syncButtons();
+  analyze();
+});
 els.upload.addEventListener("click", () => els.file.click());
 els.file.addEventListener("change", () => { loadFile(els.file.files[0]); els.file.value = ""; });
 els.input.addEventListener("dragover", (e) => e.preventDefault());
 els.input.addEventListener("drop", (e) => {
   if (!e.dataTransfer.files.length) return;  // plain dragged text falls through to the textarea
   e.preventDefault();
-  loadFile(e.dataTransfer.files[0]);
+  if (e.dataTransfer.files.length > 1) startBatch(e.dataTransfer.files);  // several essays: check them all
+  else loadFile(e.dataTransfer.files[0]);
 });
 els.tabs.addEventListener("click", (e) => {
   const b = e.target.closest("button[data-view]");
@@ -700,8 +972,12 @@ async function runDemoFromHash() {
   if (!m) return;
   const arg = m[1] || "";
   if (arg === "accuracy") { openAccuracy(); return; }
+  if (arg === "batch") {
+    startBatch(Object.entries(SAMPLES).map(([k, t]) => new File([t], `${k}-essay.txt`, { type: "text/plain" })));
+    return;
+  }
   if (VIEWS[arg]) state.view = arg;
-  els.input.value = SAMPLE;
+  els.input.value = SAMPLES[arg === "human" || arg === "mixed" ? arg : "ai"];
   syncButtons();
   await analyze();
   if (arg === "pop") {

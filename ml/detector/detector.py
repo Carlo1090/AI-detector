@@ -128,12 +128,13 @@ class Detector:
             feats["probe"] = self.calibration.window_probe.logit(pooled_hidden(stats, idx))
         return self.calibration.window.probability(feats)
 
-    def analyze(self, text: str) -> dict:
+    def analyze(self, text: str, sensitivity: str = "strict") -> dict:
         """Full report. Analysis runs on a cleaned copy (look-alike letters, hidden characters undone); every
-        span in the report points into the text as given."""
+        span in the report points into the text as given. Sensitivity picks the flagging cut-offs:
+        'strict' (default, fewest false alarms), 'balanced' or 'sensitive' (catches more AI, more false alarms)."""
         t0 = time.perf_counter()
         norm = normalize(text[:MAX_CHARS])
-        report = self._analyze(norm.text)
+        report = self._analyze(norm.text, sensitivity)
         for s in report["sentences"] + report["patterns"]:
             s["start"], s["end"] = norm.span(s["start"], s["end"])
         for t in report["tokens"]:
@@ -142,18 +143,19 @@ class Detector:
         report["elapsed_ms"] = round((time.perf_counter() - t0) * 1000)
         return report
 
-    def _analyze(self, text: str) -> dict:
+    def _analyze(self, text: str, sensitivity: str = "strict") -> dict:
         ex = self.extract(text)
         n_words = count_words(text)
         too_short = n_words < MIN_WORDS
         cal = self.calibration
+        window_cut = cal.window.cutoff(sensitivity) if cal else None
 
         sentences = []
         flagged_words = 0
         for i, (s, feats) in enumerate(zip(ex.sentences, ex.windows)):
             hits_here = [h for h in ex.hits if s.start <= h.start < s.end]
             prob = cal.window.probability(feats) if cal else None
-            flagged = bool(cal and not too_short and prob >= cal.window.threshold)
+            flagged = bool(cal and not too_short and prob >= window_cut)
             if flagged:
                 flagged_words += count_words(text[s.start:s.end])
             sentences.append({
@@ -181,9 +183,14 @@ class Detector:
             "words": n_words,
             "too_short": too_short,
             "min_words": MIN_WORDS,
-            "verdict": self._verdict(doc_prob, ai_share, too_short),
+            "verdict": self._verdict(doc_prob, ai_share, too_short, sensitivity),
             "ai_share": None if ai_share is None else round(ai_share, 4),
             "document_probability": None if doc_prob is None else round(doc_prob, 4),
+            "sensitivity": sensitivity,
+            # every level's cut-offs, so the page can switch sensitivity without re-checking
+            "levels": {} if cal is None else {
+                name: {"document": cal.document.cutoff(name), "window": cal.window.cutoff(name)}
+                for name in (cal.window.levels or {"strict": cal.window.threshold})},
             "signals": signals,
             "sentences": sentences,
             "tokens": self._tokens(ex.stats),
@@ -191,12 +198,14 @@ class Detector:
                           "weight": h.weight, "why": h.why} for h in ex.hits],
         }
 
-    def _verdict(self, doc_prob: float | None, ai_share: float | None, too_short: bool) -> str:
+    def _verdict(self, doc_prob: float | None, ai_share: float | None, too_short: bool,
+                 sensitivity: str = "strict") -> str:
+        # The web page re-derives this when the sensitivity changes (app.js: rethreshold); keep the two in sync.
         if too_short:
             return "too_short"
         if doc_prob is None:
             return "uncalibrated"
-        doc_ai = doc_prob >= self.calibration.document.threshold
+        doc_ai = doc_prob >= self.calibration.document.cutoff(sensitivity)
         if doc_ai and ai_share >= 0.5:
             return "likely_ai"
         if doc_ai or ai_share >= 0.2:

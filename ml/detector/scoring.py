@@ -27,7 +27,11 @@ class LinearModel:
     scale: list[float]
     coef: list[float]
     intercept: float
-    threshold: float  # probability at or above which we call it AI
+    threshold: float  # probability at or above which we call it AI (the "strict" level)
+    levels: dict[str, float] | None = None  # sensitivity name -> threshold, e.g. strict / balanced / sensitive
+
+    def cutoff(self, sensitivity: str = "strict") -> float:
+        return (self.levels or {}).get(sensitivity, self.threshold)
 
     def _z(self, feats: dict[str, float]) -> np.ndarray:
         x = np.array([feats.get(f, math.nan) for f in self.features], np.float64)

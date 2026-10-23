@@ -48,20 +48,28 @@
       <div id="doc" class="doc" hidden></div>
 
       <div class="pane-foot">
-        <span id="word-count" class="muted">0 words</span>
+        <span class="muted"><span id="word-count">0 words</span><span id="live" class="live" aria-live="polite"></span></span>
         <div class="actions" data-mode="edit">
           <button id="upload" class="btn ghost" type="button">Upload .docx / .txt</button>
           <input id="file" type="file" accept=".docx,.txt,.md,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
-          <button id="sample" class="btn ghost" type="button">Try an AI sample</button>
+          <button id="batch" class="btn ghost" type="button" title="Check a whole class set of essays at once">Check many files</button>
+          <input id="files" type="file" multiple accept=".docx,.txt,.md,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
           <button id="analyze" class="btn primary" type="button" disabled>Check text</button>
         </div>
+        <div class="actions" data-mode="batch" hidden>
+          <button id="batch-close" class="btn ghost" type="button">← Single text</button>
+          <button id="batch-add" class="btn ghost" type="button">Add files</button>
+          <button id="batch-csv" class="btn primary" type="button">Export CSV</button>
+        </div>
         <div class="actions" data-mode="report" hidden>
+          <button id="to-batch" class="btn ghost" type="button" hidden>← All files</button>
           <button id="edit" class="btn ghost" type="button">Edit text</button>
           <button id="print" class="btn ghost" type="button">Download report</button>
           <button id="to-humanize" class="btn primary" type="button">Humanize →</button>
         </div>
         <div class="actions" data-mode="humanized" hidden>
           <button id="back-report" class="btn ghost" type="button">← Report</button>
+          <button id="again" class="btn ghost" type="button" title="Run the humanizer again on this result">Humanize again</button>
           <button id="download" class="btn ghost" type="button">Download .txt</button>
           <button id="recheck" class="btn ghost" type="button">Re-check</button>
           <button id="copy" class="btn primary" type="button">Copy text</button>
@@ -78,7 +86,22 @@
           <li><strong>Patterns.</strong> Words, phrases and sentence shapes that AI models overuse are counted.</li>
           <li><strong>Humanize.</strong> Flagged passages are rewritten, checked to keep their meaning, and re-scored.</li>
         </ol>
+        <div class="samples">
+          <span class="small">Try a sample:</span>
+          <button class="chip" type="button" data-sample="ai">AI essay</button>
+          <button class="chip" type="button" data-sample="human">Human essay</button>
+          <button class="chip" type="button" data-sample="mixed">Mixed</button>
+        </div>
         <p class="muted small">Everything runs on this computer. Nothing is sent anywhere.</p>
+      </div>
+
+      <div id="bresults" class="card batch-summary" hidden>
+        <h2>Batch summary</h2>
+        <div class="batch-progress"><div id="batch-bar"></div></div>
+        <p id="batch-status" class="small"></p>
+        <dl class="facts" id="batch-facts"></dl>
+        <p class="muted small" style="margin:12px 0 0">Click a file to open its full report. Scores are a reason to look
+          closer, never proof. Ask for drafts or notes before drawing conclusions.</p>
       </div>
 
       <div id="history" class="card history" hidden>
@@ -107,8 +130,9 @@
               </svg>
               <div class="ring-label"><span id="share">–</span><small id="share-caption">of text</small></div>
             </div>
-            <div>
+            <div aria-live="polite">
               <div class="verdict" id="verdict"></div>
+              <p class="explain" id="verdict-explain"></p>
               <p class="muted small" id="verdict-detail"></p>
             </div>
           </div>
@@ -116,6 +140,15 @@
             <div class="strip-head"><span>Sentence map</span><span class="muted" id="strip-counts"></span></div>
             <div class="strip" id="strip" role="list" aria-label="Sentences, coloured by AI likelihood"></div>
           </div>
+          <div class="field sens">
+            <span class="field-label">Sensitivity</span>
+            <div class="seg" id="sensitivity" role="radiogroup" aria-label="Sensitivity">
+              <button role="radio" data-v="strict" aria-checked="true">Strict</button>
+              <button role="radio" data-v="balanced" aria-checked="false">Balanced</button>
+              <button role="radio" data-v="sensitive" aria-checked="false">Sensitive</button>
+            </div>
+          </div>
+          <p class="muted small sens-note" id="sens-note"></p>
         </div>
         <div class="card warn" id="manipulation" role="alert" hidden></div>
 
@@ -214,6 +247,7 @@
   </dialog>
 
   <script src="/docx.js"></script>
+  <script src="/samples.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

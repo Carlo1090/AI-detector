@@ -70,6 +70,17 @@ def test_signals_are_sorted_by_influence(detector):
     assert pushes == sorted(pushes, reverse=True)
 
 
+def test_sensitivity_levels_change_flags_and_verdict():
+    # Every window scores sigmoid(1) = 0.73: below the strict cut-off, above the sensitive one.
+    window = LinearModel(["curvature"], [0.0], [1.0], [0.0], 1.0, 0.8, {"strict": 0.8, "sensitive": 0.6})
+    document = LinearModel(["curvature"], [0.0], [1.0], [0.0], 1.0, 0.8, {"strict": 0.8, "sensitive": 0.6})
+    det = Detector(FakeScorer(), Calibration("fake/model", document=document, window=window))
+    strict, sensitive = det.analyze(LONG), det.analyze(LONG, "sensitive")
+    assert strict["ai_share"] == 0 and strict["verdict"] == "likely_human"
+    assert sensitive["ai_share"] == 1.0 and sensitive["verdict"] == "likely_ai"
+    assert sensitive["levels"]["sensitive"] == {"document": 0.6, "window": 0.6}
+
+
 def test_uncalibrated_detector_still_returns_word_stats():
     r = Detector(FakeScorer(), None).analyze(LONG)
     assert r["verdict"] == "uncalibrated" and r["document_probability"] is None

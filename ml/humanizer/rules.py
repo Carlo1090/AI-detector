@@ -43,6 +43,7 @@ _VERB_FORMS = {  # base, 3rd person, past, -ing
     "make": ("make", "makes", "made", "making"),
     "reach": ("reach", "reaches", "reached", "reaching"),
     "tap": ("tap", "taps", "tapped", "tapping"),
+    "try": ("try", "tries", "tried", "trying"),
 }
 _SUFFIX_INDEX = {"": 0, "e": 0, "s": 1, "es": 1, "ed": 2, "d": 2, "ing": 3, "ding": 3}
 
@@ -75,6 +76,7 @@ def _verb_rule(target: str, tail: str = "") -> Callable[[re.Match, int], str]:
 _AI_WORD = "AI-typical wording, swapped for a plainer word."
 _FILLER = "Filler that AI adds; the sentence works without it."
 _TRANSITION = "Formal transition opener; AI text starts far more sentences this way."
+_PLAIN = "Wordy phrasing; the plain version reads more naturally."
 
 RULES: list[Rule] = [
     # stock openers and filler
@@ -139,6 +141,28 @@ RULES: list[Rule] = [
     _r(r"\bvibrant\b", _pick("lively", "colorful"), _AI_WORD),
     _r(r"\bbustling\b", _pick("busy", "crowded"), _AI_WORD),
     _r(r"\bunwavering\b", _pick("steady", "firm"), _AI_WORD),
+    # plain English (Grammarly-style clarity fixes; wordy phrasing is also typical of AI text)
+    _r(r"\bin order to\b", _pick("to"), _PLAIN),
+    _r(r"\bdue to the fact that\b", _pick("because"), _PLAIN),
+    _r(r"\bowing to the fact that\b", _pick("because"), _PLAIN),
+    _r(r"\bin light of the fact that\b", _pick("because", "since"), _PLAIN),
+    _r(r"\bat this point in time\b", _pick("now"), _PLAIN),
+    _r(r"\bprior to\b", _pick("before"), _PLAIN),
+    _r(r"\bsubsequent to\b", _pick("after"), _PLAIN),
+    _r(r"\bin the event that\b", _pick("if"), _PLAIN),
+    _r(r"\ba (?:significant|large|considerable) number of\b",  # "of them" -> "many of them", "of tasks" -> "many tasks"
+       lambda m, n: "many of" if re.match(r"\s+(?:them|us|you|these|those|the|our|their|its|his|her|my|your)\b",
+                                          m.string[m.end():]) else "many", _PLAIN),
+    _r(r"\ba (?:wealth|host) of\b", _pick("plenty of", "lots of"), _PLAIN),
+    _r(r"\bnumerous\b", _pick("many"), _PLAIN),
+    _r(r"\bcommenc(e|es|ed|ing)\b", lambda m, n: _verb("start", m.group(1)), _PLAIN),
+    _r(r"\bfacilitat(e|es|ed|ing)\b", lambda m, n: _verb("help", m.group(1)), _PLAIN),
+    _r(r"\bendeavou?r(s|ed|ing)? to\b", lambda m, n: _verb("try", m.group(1) or "") + " to", _PLAIN),
+    _r(r"\bwith regard to\b|\bwith respect to\b|\bin regard to\b", _pick("about", "on"), _PLAIN),
+    _r(r"\bhas the ability to\b", _pick("can"), _PLAIN),
+    _r(r"\bhave the ability to\b", _pick("can"), _PLAIN),
+    _r(r"\bis able to\b", _pick("can"), _PLAIN),
+    _r(r"\bare able to\b", _pick("can"), _PLAIN),
 ]
 
 # Sentence-initial transitions: dropped (the sentence still stands) or swapped for a plain connector.

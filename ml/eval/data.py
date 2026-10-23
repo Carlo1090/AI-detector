@@ -268,7 +268,8 @@ def generated(split: str) -> list[Example]:
     for path in sorted(GENERATED.glob("*.jsonl")) if GENERATED.exists() else []:
         for line in path.read_text(encoding="utf-8").splitlines():
             rec = json.loads(line)
-            if _in_split(rec["source_key"], split):
+            side = rec.get("split")  # set when the source dataset decides the split itself
+            if side == split or (side is None and _in_split(rec["source_key"], split)):
                 out.append(Example(rec["id"], rec["text"], 1, rec["group"]))
     return out
 

@@ -45,12 +45,17 @@ def evaluate(name: str, examples, rows, cal: Calibration) -> tuple[list[str], di
         summary = {"auroc": roc_auc_score(y, p), "tpr": (p[y == 1] >= thr).mean(), "fpr": (p[y == 0] >= thr).mean(),
                    "tpr_at_1fpr": (p[y == 1] > oracle).mean(),
                    "tpr150": (p[(y == 1) & long] >= thr).mean() if ((y == 1) & long).any() else np.nan,
-                   "fpr150": (p[(y == 0) & long] >= thr).mean() if ((y == 0) & long).any() else np.nan}
+                   "fpr150": (p[(y == 0) & long] >= thr).mean() if ((y == 0) & long).any() else np.nan,
+                   "levels": {level: {"ai_caught": round(float((p[y == 1] >= t).mean()), 4),
+                                      "human_flagged": round(float((p[y == 0] >= t).mean()), 4)}
+                              for level, t in (cal.document.levels or {"strict": thr}).items()}}
         lines += [
             "| Metric | Value |", "|---|---:|",
             f"| AUROC | {summary['auroc']:.3f} |",
             f"| AI detected at detector threshold ({thr:.2f}) | {_pct(summary['tpr'])} |",
             f"| Humans wrongly flagged at detector threshold | {_pct(summary['fpr'])} |",
+            *[f"| … at '{level}' sensitivity: AI detected / humans wrongly flagged | {_pct(v['ai_caught'])} / "
+              f"{_pct(v['human_flagged'])} |" for level, v in summary["levels"].items() if level != "strict"],
             f"| … texts of 150+ words only: AI detected / humans wrongly flagged | {_pct(summary['tpr150'])} / {_pct(summary['fpr150'])} |",
             f"| AI detected at 1% false-positive rate (oracle threshold) | {_pct(summary['tpr_at_1fpr'])} |",
             "",
@@ -132,6 +137,11 @@ def main() -> None:
         ("TextSight 2026 control set (never trained on: current models, non-native academic writers)",
          "textsight2026", textsight()),
     ]
+    humanized = [e for e in generated("test") if e.group.startswith("humanized")]
+    if humanized:  # Turnitin-style "AI bypasser" check: AI text after our own humanizer
+        humans = [e for e in ghostbuster_essays("test") + hc3("test") + arxiv_abstracts("test") if e.label == 0]
+        suites.append(("AI text after the humanizer vs human essays, formal and academic writing (held-out)",
+                       "humanized-test", balanced(humanized + humans, args.per_class)))
     table = ["| Test set | AUROC | AI caught | Humans wrongly flagged | Humans wrongly flagged (150+ words) |",
              "|---|---:|---:|---:|---:|"]
     accuracy = {"date": date.today().isoformat(), "model": scorer.name, "suites": [], "comparison": None}
@@ -148,7 +158,7 @@ def main() -> None:
                 "name": title.split(" (")[0], "detail": detail,
                 "n_human": int(sum(e.label == 0 for e in examples)), "n_ai": int(sum(e.label == 1 for e in examples)),
                 "auroc": round(float(s["auroc"]), 3), "ai_caught": round(float(s["tpr"]), 4),
-                "human_flagged": round(float(s["fpr"]), 4)})
+                "human_flagged": round(float(s["fpr"]), 4), "levels": s["levels"]})
     report[4:4] = ["## Summary", "", *table, ""]
 
     if args.compare:

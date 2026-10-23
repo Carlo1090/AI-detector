@@ -40,6 +40,12 @@ bar of every sentence (click a segment to jump to it). It also shows each signal
 
 More features:
 
+- **Live score:** stop typing for a moment and the footer shows the AI score. **Check text** then opens instantly.
+- **Check many files** (or drop several files on the text box): check a whole class set of essays. You get a
+  results table, a summary, a full report per file, and **Export CSV**.
+- **Try a sample:** an AI essay, a real student essay (Ghostbuster, CC BY 3.0), and a mixed one with an AI
+  paragraph inserted. The mixed sample shows sentence-level detection.
+- A plain-language line under the verdict explains which signals drove it.
 - **Click any sentence** for its score, the reasons, and **rewrite suggestions** (Grammarly-style). Each
   suggestion shows its AI likelihood and how closely it keeps the meaning, and you can apply it in one click.
 - **Download report** saves a clean printable report; choose "Save as PDF" in the print dialog.
@@ -70,6 +76,16 @@ documents (and ~3% of human sentence windows) are flagged, separately for each k
 student essays, English-learner essays, news, fiction, Wikipedia, medicine, finance and Q&A. Formal and
 non-native writing are where detectors usually make false accusations, so averaging would hide the problem.
 
+**Sensitivity** (in the report, remembered per browser):
+
+| Level | Human texts flagged (target) | Use it for |
+|---|---|---|
+| Strict (default) | about 1 in 100 | Anything with consequences. Misses more AI, especially from the newest models. |
+| Balanced | about 2–3 in 100 | General checking. |
+| Sensitive | about 5 in 100 | Screening for newer models. Never judge on it alone. |
+
+Switching levels is instant: the report carries all three cut-offs. The API takes `"sensitivity"` too.
+
 ## Humanizer
 
 After a check, choose a strength and tone, then press **Humanize**:
@@ -81,8 +97,8 @@ After a check, choose a strength and tone, then press **Humanize**:
 | Strong | Rewrites anything borderline, more candidates, up to three rounds. |
 
 Every change is highlighted. Click a change to switch between the new and original wording, or switch to
-**Side by side** or **Clean text**. **Copy** and **Download** use your choices, and **Re-check** runs the
-detector on exactly that text.
+**Side by side** or **Clean text**. **Copy** and **Download** use your choices, **Re-check** runs the
+detector on exactly that text, and **Humanize again** runs a second pass on the result.
 
 To use Claude instead of the local rewriter, set `ANTHROPIC_API_KEY` (the default model is
 `claude-opus-5-5`; override it with `HUMANIZE_CLAUDE_MODEL`). This writes far better, but your text is then
