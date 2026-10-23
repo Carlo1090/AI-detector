@@ -5,13 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DetectAI</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23ea580c'/%3E%3Cpath d='M9 22V10h6a6 6 0 0 1 0 12z' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+  <script>
+    // Apply the saved theme before first paint (no flash).
+    try { const t = localStorage.getItem("detectai.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}
+  </script>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand"><span class="logo" aria-hidden="true">D</span>DetectAI</div>
     <div class="status" id="status"><span class="dot"></span><span id="status-text">Starting…</span></div>
+    <nav class="top-actions">
+      <button id="open-accuracy" class="link-btn" type="button">How accurate is it?</button>
+      <button id="theme" class="icon-btn" type="button" title="Theme: system" aria-label="Switch colour theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>
+      </button>
+    </nav>
   </header>
+
+  <div class="print-header" aria-hidden="true">
+    <strong>DetectAI report</strong> · <span id="print-date"></span> · <span id="print-model"></span>
+  </div>
 
   <main class="layout">
     <section class="doc-pane" aria-label="Document">
@@ -21,6 +35,11 @@
           <button role="tab" data-view="sentences" aria-selected="true">Sentences</button>
           <button role="tab" data-view="words" aria-selected="false">Words</button>
           <button role="tab" data-view="phrases" aria-selected="false">AI phrases</button>
+        </div>
+        <div class="tabs" role="tablist" id="htabs" hidden>
+          <button role="tab" data-hview="changes" aria-selected="true">Changes</button>
+          <button role="tab" data-hview="split" aria-selected="false">Side by side</button>
+          <button role="tab" data-hview="clean" aria-selected="false">Clean text</button>
         </div>
       </div>
 
@@ -38,6 +57,7 @@
         </div>
         <div class="actions" data-mode="report" hidden>
           <button id="edit" class="btn ghost" type="button">Edit text</button>
+          <button id="print" class="btn ghost" type="button">Download report</button>
           <button id="to-humanize" class="btn primary" type="button">Humanize →</button>
         </div>
         <div class="actions" data-mode="humanized" hidden>
@@ -54,32 +74,47 @@
         <h2>How it works</h2>
         <ol>
           <li><strong>Word by word.</strong> Two small language models read your text and record how predictable every word was.</li>
-          <li><strong>Sentence by sentence.</strong> Each sentence is scored together with its neighbours, like Turnitin's report.</li>
+          <li><strong>Sentence by sentence.</strong> Each sentence is scored with its neighbours, like Turnitin's report.</li>
           <li><strong>Patterns.</strong> Words, phrases and sentence shapes that AI models overuse are counted.</li>
-          <li><strong>Humanize.</strong> Flagged passages are rewritten, checked to keep their meaning, and re-scored until they read naturally.</li>
+          <li><strong>Humanize.</strong> Flagged passages are rewritten, checked to keep their meaning, and re-scored.</li>
         </ol>
         <p class="muted small">Everything runs on this computer. Nothing is sent anywhere.</p>
       </div>
 
+      <div id="history" class="card history" hidden>
+        <div class="card-head"><h2>Recent checks</h2><button id="clear-history" class="link-btn small" type="button">Clear</button></div>
+        <ul id="history-list"></ul>
+        <p class="muted small">Kept only in this browser.</p>
+      </div>
+
       <div id="loading" class="card loading" hidden>
         <div class="spinner" aria-hidden="true"></div>
-        <p id="loading-text">Reading your text word by word…</p>
+        <div>
+          <p id="loading-text">Reading your text word by word…</p>
+          <p class="muted small" id="loading-time"></p>
+        </div>
       </div>
 
       <div id="error" class="card error" role="alert" hidden></div>
 
       <div id="results" hidden>
         <div class="card score">
-          <div class="ring">
-            <svg viewBox="0 0 120 120" aria-hidden="true">
-              <circle class="ring-track" cx="60" cy="60" r="52"/>
-              <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52"/>
-            </svg>
-            <div class="ring-label"><span id="share">–</span><small id="share-caption">of text</small></div>
+          <div class="score-top">
+            <div class="ring">
+              <svg viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="ring-track" cx="60" cy="60" r="52"/>
+                <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52"/>
+              </svg>
+              <div class="ring-label"><span id="share">–</span><small id="share-caption">of text</small></div>
+            </div>
+            <div>
+              <div class="verdict" id="verdict"></div>
+              <p class="muted small" id="verdict-detail"></p>
+            </div>
           </div>
-          <div>
-            <div class="verdict" id="verdict"></div>
-            <p class="muted small" id="verdict-detail"></p>
+          <div class="strip-wrap">
+            <div class="strip-head"><span>Sentence map</span><span class="muted" id="strip-counts"></span></div>
+            <div class="strip" id="strip" role="list" aria-label="Sentences, coloured by AI likelihood"></div>
           </div>
         </div>
         <div class="card warn" id="manipulation" role="alert" hidden></div>
@@ -103,6 +138,7 @@
           </div>
           <p class="muted small" id="humanize-note"></p>
           <button id="humanize" class="btn primary wide" type="button">Humanize flagged text</button>
+          <p class="muted small tip-line">Tip: click any sentence in the report to get rewrite suggestions for just that sentence.</p>
         </div>
 
         <div class="card">
@@ -157,6 +193,26 @@
   </main>
 
   <div id="tip" class="tip" role="tooltip" hidden></div>
+
+  <div id="pop" class="pop" role="dialog" aria-label="Sentence details" hidden>
+    <div class="pop-head">
+      <span id="pop-score"></span>
+      <button class="icon-btn small" id="pop-close" type="button" aria-label="Close">✕</button>
+    </div>
+    <p class="pop-sentence" id="pop-sentence"></p>
+    <ul class="pop-reasons" id="pop-reasons"></ul>
+    <button class="btn primary wide" id="pop-suggest" type="button">Suggest rewrites</button>
+    <div id="pop-options"></div>
+  </div>
+
+  <dialog id="accuracy" class="modal" aria-labelledby="accuracy-title">
+    <div class="modal-head">
+      <h2 id="accuracy-title">How accurate is DetectAI?</h2>
+      <button class="icon-btn" id="close-accuracy" type="button" aria-label="Close">✕</button>
+    </div>
+    <div id="accuracy-body"><p class="muted">Loading…</p></div>
+  </dialog>
+
   <script src="/docx.js"></script>
   <script src="/app.js"></script>
 </body>

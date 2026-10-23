@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-24",
+  "model": "Qwen/Qwen2.5-0.5B+Qwen/Qwen2.5-0.5B-Instruct",
+  "suites": [
+    {
+      "name": "Student-style essays",
+      "detail": "Ghostbuster test split",
+      "n_human": 250,
+      "n_ai": 250,
+      "auroc": 0.999,
+      "ai_caught": 0.948,
+      "human_flagged": 0.0
+    },
+    {
+      "name": "News and fiction",
+      "detail": "Ghostbuster Reuters + WritingPrompts, held-out 30%",
+      "n_human": 250,
+      "n_ai": 250,
+      "auroc": 0.999,
+      "ai_caught": 0.892,
+      "human_flagged": 0.0
+    },
+    {
+      "name": "Real student essays incl. English learners",
+      "detail": "(PERSUADE) vs student-imitating Llama (DAIGT), held-out 30%",
+      "n_human": 250,
+      "n_ai": 250,
+      "auroc": 0.943,
+      "ai_caught": 0.52,
+      "human_flagged": 0.0
+    },
+    {
+      "name": "Formal writing: Wikipedia, medicine, finance, Q&A vs ChatGPT",
+      "detail": "HC3, held-out 30%",
+      "n_human": 250,
+      "n_ai": 250,
+      "auroc": 1.0,
+      "ai_caught": 0.956,
+      "human_flagged": 0.0
+    },
+    {
+      "name": "Newer-model AI",
+      "detail": "(Claude 3.5 Sonnet, Qwen2.5 abstracts) vs human academic abstracts (arXiv), held-out 30%",
+      "n_human": 250,
+      "n_ai": 250,
+      "auroc": 1.0,
+      "ai_caught": 0.864,
+      "human_flagged": 0.0
+    },
+    {
+      "name": "RAID with adversarial attacks",
+      "detail": "GPT-4, ChatGPT, Cohere, Mistral, Llama...; held-out sources",
+      "n_human": 250,
+      "n_ai": 250,
+      "auroc": 0.938,
+      "ai_caught": 0.564,
+      "human_flagged": 0.0
+    },
+    {
+      "name": "TextSight 2026 control set",
+      "detail": "never trained on: current models, non-native academic writers",
+      "n_human": 644,
+      "n_ai": 56,
+      "auroc": 0.952,
+      "ai_caught": 0.339,
+      "human_flagged": 0.009
+    }
+  ],
+  "comparison": {
+    "model": "Oxidane/tmr-ai-text-detector",
+    "suites": [
+      {
+        "name": "Student-style essays",
+        "auroc": 0.924,
+        "ai_caught": 1.0,
+        "human_flagged": 0.988
+      },
+      {
+        "name": "News and fiction",
+        "auroc": 0.999,
+        "ai_caught": 1.0,
+        "human_flagged": 0.66
+      },
+      {
+        "name": "Real student essays incl. English learners",
+        "auroc": 0.756,
+        "ai_caught": 0.996,
+        "human_flagged": 0.968
+      },
+      {
+        "name": "Formal writing: Wikipedia, medicine, finance, Q&A vs ChatGPT",
+        "auroc": 0.991,
+        "ai_caught": 1.0,
+        "human_flagged": 0.6
+      },
+      {
+        "name": "Newer-model AI",
+        "auroc": 0.993,
+        "ai_caught": 0.984,
+        "human_flagged": 0.108
+      },
+      {
+        "name": "RAID with adversarial attacks",
+        "auroc": 0.993,
+        "ai_caught": 0.972,
+        "human_flagged": 0.04
+      },
+      {
+        "name": "TextSight 2026 control set",
+        "auroc": 0.894,
+        "ai_caught": 0.786,
+        "human_flagged": 0.121
+      }
+    ]
+  }
+}

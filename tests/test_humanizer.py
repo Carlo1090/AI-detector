@@ -151,6 +151,21 @@ def test_light_mode_uses_rules_only():
     assert "delve" not in h["text"].lower()
 
 
+def test_sentence_alternatives_are_gated_and_sorted():
+    text = "Intro line here. We delve into the tapestry of Acme history. Outro line."
+    start = text.index("We delve")
+    end = text.index("history.") + len("history.")
+    outputs = lambda p: ["We look closely at the long history of Acme.",   # noqa: E731  good
+                         "We look closely at the long company history.",   # drops Acme -> rejected
+                         "Moreover we delve into the rich tapestry of Acme history."]  # more AI phrases -> rejected
+    alt = Humanizer(FakeDetector(), FakeRewriter(outputs), FakeEmbedder()).alternatives(text, start, end)
+    texts = [o["text"] for o in alt["options"]]
+    assert "We look closely at the long history of Acme." in texts
+    assert all("company history" not in t and "Moreover" not in t for t in texts)
+    assert [o["ai"] for o in alt["options"]] == sorted(o["ai"] for o in alt["options"])
+    assert alt["original"] == text[start:end]
+
+
 def test_no_candidate_passes_keeps_rule_edits():
     h = Humanizer(FakeDetector(), FakeRewriter(lambda p: ["nonsense"]), FakeEmbedder()).humanize(TEXT, "balanced")
     assert not [c for c in h["changes"] if c["kind"] == "rewrite"]

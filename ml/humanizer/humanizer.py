@@ -21,7 +21,7 @@ from ml.detector.detector import Detector
 from ml.detector.lexicon import find_patterns
 from ml.detector.text import Span, count_words, normalize, split_sentences
 
-from .meaning import Embedder, missing_spans, new_informal_words, reading_grade
+from .meaning import Embedder, missing_spans, new_informal_words, vocabulary_level
 from .rewriter import LocalRewriter
 from .rules import Edit, apply_edits, find_edits
 
@@ -33,7 +33,7 @@ STRENGTHS = {
 }
 MIN_SIMILARITY = 0.82  # whole passage, MiniLM cosine
 MIN_COVERAGE = 0.62  # every original sentence must be matched at least this well
-MAX_GRADE_DROP = 3.0  # Flesch-Kincaid grades a rewrite may lose (keeps an essay from turning into a kids' text)
+MAX_VOCAB_DROP = 0.25  # syllables per word a rewrite may lose (keeps an essay from turning into a kids' text)
 _CJK = re.compile(r"[　-鿿가-힯]")
 
 
@@ -104,7 +104,7 @@ class Humanizer:
             return False, "dropped a name/number/quote", 0.0
         if new_informal_words(p.source, candidate):
             return False, "slang / register drop", 0.0
-        if reading_grade(candidate) < reading_grade(p.source) - MAX_GRADE_DROP:
+        if vocabulary_level(candidate) < vocabulary_level(p.source) - MAX_VOCAB_DROP:
             return False, "dumbed down", 0.0
         if _lexicon_weight(candidate) > _lexicon_weight(p.source):
             return False, "added AI phrases", 0.0
@@ -116,6 +116,34 @@ class Humanizer:
         if self.embedder.coverage(src_sents, new_sents) < MIN_COVERAGE:
             return False, "dropped an idea", similarity
         return True, "", similarity
+
+    def alternatives(self, text: str, start: int, end: int, tone: str = "natural", n: int = 6, keep: int = 3) -> dict:
+        """Grammarly-style suggestions for one span: a few rewrites that pass every quality gate, least AI-like
+        first. The rule-only fix is included as a candidate, so there is always something when rules apply."""
+        t0 = time.perf_counter()
+        passage = text[start:end]
+        before = text[max(0, start - 800):start]
+        source = apply_edits(passage, find_edits(passage, contractions=(tone == "natural")))
+        p = Passage(start, end, [], source, before)
+        candidates = [source] if source != passage else []
+        if self.rewriter is not None:
+            with self._rewriter_on_gpu():
+                candidates += self.rewriter.rewrite([source], n=n, tone=tone)[0]
+        options, rejected = [], {}
+        for cand in dict.fromkeys(c.strip() for c in candidates):
+            if not cand or cand == passage:
+                continue
+            ok, why, sim = self._accept(p, cand) if cand != source else (True, "", 1.0)
+            if not ok:
+                rejected[why] = rejected.get(why, 0) + 1
+                continue
+            prob = self.detector.passage_probability(cand, before)
+            options.append({"text": cand, "ai": round(prob, 3), "similarity": round(sim, 3),
+                            "kind": "rule" if cand == source else "rewrite"})
+        options.sort(key=lambda o: o["ai"])
+        return {"original": passage, "ai": round(self.detector.passage_probability(passage, before), 3),
+                "options": options[:keep], "rejected": rejected, "candidates": [c for c in candidates if c != source],
+                "elapsed_ms": round((time.perf_counter() - t0) * 1000)}
 
     def humanize(self, text: str, strength: str = "balanced", tone: str = "natural") -> dict:
         t0 = time.perf_counter()

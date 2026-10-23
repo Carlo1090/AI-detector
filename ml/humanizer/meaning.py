@@ -53,6 +53,13 @@ def _syllables(word: str) -> int:
     return max(1, n)
 
 
+def vocabulary_level(text: str) -> float:
+    """Average syllables per word: how sophisticated the wording is, independent of sentence length (so
+    splitting a long sentence in two, which humanizing often should do, doesn't count as dumbing down)."""
+    words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", text)
+    return sum(_syllables(w) for w in words) / len(words) if words else 0.0
+
+
 def reading_grade(text: str) -> float:
     """Flesch-Kincaid grade level: roughly the school grade needed to read the text."""
     words = re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)?", text)

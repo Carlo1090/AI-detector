@@ -81,6 +81,7 @@ def _comparison(suites, model_name: str) -> list[str]:
     lines = [f"## Comparison: {model_name}", "",
              "An independent public detector, run on the same texts at its default 0.5 cut-off.", "",
              "| Test set | AUROC | AI caught | Humans wrongly flagged |", "|---|---:|---:|---:|"]
+    items = []
     for title, _, examples in suites:
         for e in examples:
             if e.id not in scores:
@@ -89,10 +90,14 @@ def _comparison(suites, model_name: str) -> list[str]:
         y = np.array([e.label for e in examples])
         p = np.array([scores[e.id] for e in examples])
         if 0 < y.sum() < len(y):
-            lines.append(f"| {title.split(' (')[0]} | {roc_auc_score(y, p):.3f} | {_pct((p[y == 1] >= 0.5).mean())} "
-                         f"| {_pct((p[y == 0] >= 0.5).mean())} |")
+            item = {"name": title.split(" (")[0], "auroc": round(float(roc_auc_score(y, p)), 3),
+                    "ai_caught": round(float((p[y == 1] >= 0.5).mean()), 4),
+                    "human_flagged": round(float((p[y == 0] >= 0.5).mean()), 4)}
+            items.append(item)
+            lines.append(f"| {item['name']} | {item['auroc']:.3f} | {_pct(item['ai_caught'])} "
+                         f"| {_pct(item['human_flagged'])} |")
     path.write_text(json.dumps(scores), encoding="utf-8")
-    return lines + [""]
+    return lines + [""], items
 
 
 def main() -> None:
@@ -129,16 +134,32 @@ def main() -> None:
     ]
     table = ["| Test set | AUROC | AI caught | Humans wrongly flagged | Humans wrongly flagged (150+ words) |",
              "|---|---:|---:|---:|---:|"]
+    accuracy = {"date": date.today().isoformat(), "model": scorer.name, "suites": [], "comparison": None}
     for title, key, examples in suites:
         lines, s = evaluate(title, examples, extract_features(detector, examples, key), cal)
         report += lines
         if s:
             table.append(f"| {title.split(' (')[0]} | {s['auroc']:.3f} | {_pct(s['tpr'])} | {_pct(s['fpr'])} "
                          f"| {_pct(s['fpr150'])} |")
+            detail = title[len(title.split(" (")[0]):].strip()
+            if detail.startswith("(") and detail.endswith(")") and detail.count("(") == 1:
+                detail = detail[1:-1]
+            accuracy["suites"].append({
+                "name": title.split(" (")[0], "detail": detail,
+                "n_human": int(sum(e.label == 0 for e in examples)), "n_ai": int(sum(e.label == 1 for e in examples)),
+                "auroc": round(float(s["auroc"]), 3), "ai_caught": round(float(s["tpr"]), 4),
+                "human_flagged": round(float(s["fpr"]), 4)})
     report[4:4] = ["## Summary", "", *table, ""]
 
     if args.compare:
-        report += _comparison(suites, args.compare)
+        lines, items = _comparison(suites, args.compare)
+        report += lines
+        accuracy["comparison"] = {"model": args.compare, "suites": items}
+
+    # The web app's "How accurate is it?" panel reads this file.
+    import json
+
+    (ROOT / "web" / "accuracy.json").write_text(json.dumps(accuracy, indent=2), encoding="utf-8")
 
     out = ROOT / "data" / "reports" / f"eval-{scorer.name.replace('/', '__')}.md"
     out.parent.mkdir(parents=True, exist_ok=True)

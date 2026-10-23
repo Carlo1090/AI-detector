@@ -89,6 +89,12 @@ class HumanizeRequest(DetectRequest):
     tone: Literal["natural", "academic"] = "natural"
 
 
+class RewriteRequest(DetectRequest):
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
+    tone: Literal["natural", "academic"] = "natural"
+
+
 @app.get("/api/health")
 def health():
     if state.error:
@@ -128,6 +134,21 @@ def humanize(req: HumanizeRequest):
                                  "Light mode (word-level fixes only) works now.")
     with state.lock:
         return Humanizer(detector, state.rewriter, state.embedder).humanize(req.text, req.strength, req.tone)
+
+
+@app.post("/api/rewrite")
+def rewrite(req: RewriteRequest):
+    """Suggestions for one sentence or passage of the text (the report's 'Suggest rewrites')."""
+    from ml.humanizer.humanizer import Humanizer
+
+    detector = _require_detector(req.text)
+    if detector.calibration is None:
+        raise HTTPException(409, "The detector isn't calibrated, so rewrites can't be scored.")
+    if not req.start < req.end <= len(req.text):
+        raise HTTPException(422, "The selected span is outside the text.")
+    rewriter = state.rewriter if state.humanizer_status == "ready" else None
+    with state.lock:
+        return Humanizer(detector, rewriter, state.embedder).alternatives(req.text, req.start, req.end, req.tone)
 
 
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

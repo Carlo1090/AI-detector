@@ -2,5 +2,11 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+# downloaded datasets and model features (re-created by the eval scripts)
 data/raw/
 data/cache/
+# humanizer training pairs and logs (re-created by ml.humanizer.train.make_pairs / ml.eval.*)
+data/pairs/
+data/reports/*.log
+# fine-tuned adapter weights (tens of MB; re-created by ml.humanizer.train.finetune)
+ml/humanizer/adapters/

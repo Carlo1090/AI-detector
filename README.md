@@ -34,8 +34,20 @@ Open <http://127.0.0.1:8000>. Paste text, or upload or drag in a **.docx** or **
 | **Words** | Each word coloured by how predictable it was: the model's #1 guess, its top 10, its top 100, or a surprising word. Hover to see what the model expected instead. |
 | **AI phrases** | Words, phrases and sentence shapes that AI models overuse (*delve*, *it's important to note*, "not just X, but Y", strings of em dashes…). |
 
-The side panel shows the share of text flagged and the verdict. It also shows each signal's push toward
-"AI" or "human", so you can see why the score came out the way it did. Texts under 150 words get no verdict.
+The side panel shows the share of text flagged, the verdict, and a **sentence map**: a Turnitin-style colour
+bar of every sentence (click a segment to jump to it). It also shows each signal's push toward "AI" or
+"human", so you can see why the score came out the way it did. Texts under 150 words get no verdict.
+
+More features:
+
+- **Click any sentence** for its score, the reasons, and **rewrite suggestions** (Grammarly-style). Each
+  suggestion shows its AI likelihood and how closely it keeps the meaning, and you can apply it in one click.
+- **Download report** saves a clean printable report; choose "Save as PDF" in the print dialog.
+- **Hidden-character check:** look-alike letters from other alphabets and invisible characters, both common
+  ways to fool detectors, are flagged and undone before analysis.
+- **How accurate is it?** shows the latest held-out evaluation next to a public detector
+  (`web/accuracy.json`, rewritten by `python -m ml.eval.evaluate --compare`).
+- **Recent checks** (kept only in your browser), and a light/dark/system theme toggle.
 
 ### How it scores
 
@@ -68,8 +80,9 @@ After a check, choose a strength and tone, then press **Humanize**:
 | Balanced | Light, plus each flagged passage (up to 3 sentences) is rewritten several ways by a local model (Qwen2.5-1.5B-Instruct). Each version must keep its meaning (embedding similarity ≥ 0.80) and every name, number, citation and quotation, stay a sane length, and add no new AI phrases. The detector then picks the least AI-like version. Passages still flagged get a second round. |
 | Strong | Rewrites anything borderline, more candidates, up to three rounds. |
 
-Every change is highlighted. Click a change to switch between the new and original wording. **Copy** and
-**Download** use your choices, and **Re-check** runs the detector on exactly that text.
+Every change is highlighted. Click a change to switch between the new and original wording, or switch to
+**Side by side** or **Clean text**. **Copy** and **Download** use your choices, and **Re-check** runs the
+detector on exactly that text.
 
 To use Claude instead of the local rewriter, set `ANTHROPIC_API_KEY` (the default model is
 `claude-opus-5-5`; override it with `HUMANIZE_CLAUDE_MODEL`). This writes far better, but your text is then
