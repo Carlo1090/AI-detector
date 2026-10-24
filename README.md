@@ -19,6 +19,7 @@ python -m venv .venv
 ```
 
 After setup, you can also just double-click **start.cmd**, which starts the server and opens the browser.
+From a PowerShell terminal, type `.\start.cmd` (PowerShell needs the `.\` to run a file from the current folder).
 
 Open <http://127.0.0.1:8000>. Paste text, or upload or drag in a **.docx** or **.txt** file, then press
 **Check text** (or Ctrl+Enter). <http://127.0.0.1:8000/#demo> runs a built-in AI-written sample, and
